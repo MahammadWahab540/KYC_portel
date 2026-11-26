@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ApplicationState, EnrollmentFinance, INITIAL_APPLICATION_STATE, INITIAL_FINANCE } from './types.ts';
 import { TRANSLATIONS, Language } from './locales.ts';
+import { initMixpanel, identifyUser, trackEvent, resetUser } from './analytics.ts';
 import { 
   ShieldCheck, ArrowRight, ArrowLeft, CheckCircle2, AlertCircle, 
   UploadCloud, FileText, Camera, Building, User, CreditCard, 
@@ -41,6 +42,14 @@ export default function App() {
   const [isLoadingNbfc, setIsLoadingNbfc] = useState<boolean>(false);
   const [nbfcError, setNbfcError] = useState<string | null>(null);
   const [isStageLocked, setIsStageLocked] = useState<boolean>(false);
+
+  useEffect(() => {
+    initMixpanel();
+    trackEvent('portal_loaded', {
+      initial_stage: appState.stage,
+      has_active_session: Boolean(authToken)
+    });
+  }, []);
 
   // Server-side navigation policy check
   const checkNavigationPolicy = async () => {
@@ -217,6 +226,21 @@ export default function App() {
               ? data.application.current_stage
               : 'payment');
 
+        // Identify authenticated user in Mixpanel
+        identifyUser(cleanPhone, {
+          name: data.application?.student_name || 'NxtWave Student',
+          phone: cleanPhone,
+          program: data.enrollment?.program,
+          courseFee: data.enrollment?.course,
+          balanceAmount: data.enrollment?.balance
+        });
+        trackEvent('kyc_session_authenticated', {
+          auth_type: 'QA_BYPASS_DIRECT',
+          student_phone: cleanPhone,
+          resumed: Boolean(data.isResumed),
+          target_stage: targetStage
+        });
+
         setAppState(prev => ({
           ...prev,
           ...restoredPayload,
@@ -337,6 +361,19 @@ export default function App() {
         stage: targetStage
       }));
 
+      const cleanP = appState.phone.replace(/\D/g, '');
+      identifyUser(cleanP, {
+        phone: cleanP,
+        program: data.enrollment?.program,
+        courseFee: data.enrollment?.course,
+        balanceAmount: data.enrollment?.balance
+      });
+      trackEvent('kyc_session_authenticated', {
+        auth_type: 'OTP_VERIFIED',
+        student_phone: cleanP,
+        target_stage: targetStage
+      });
+
       if (data.isResumed && !data.isCompleted && targetStage !== 'payment') {
         setResumedNotice(`Resumed your application at "${targetStage}" with ${data.documents?.length || 0} saved document(s).`);
         showToast('Welcome back! Resumed your active application.');
@@ -407,12 +444,26 @@ export default function App() {
         history: [...prev.history, prev.stage],
         stage: targetStage
       }));
+
+      trackEvent('kyc_stage_transition', {
+        from_stage: appState.stage,
+        to_stage: targetStage,
+        method: appState.method,
+        relation: appState.relation
+      });
     } catch {
       setAppState(prev => ({
         ...prev,
         history: [...prev.history, prev.stage],
         stage: targetStage
       }));
+
+      trackEvent('kyc_stage_transition', {
+        from_stage: appState.stage,
+        to_stage: targetStage,
+        method: appState.method,
+        relation: appState.relation
+      });
     } finally {
       setIsLoading(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -532,6 +583,15 @@ export default function App() {
       }));
 
       showToast(`${file.name} uploaded & verified (${data.document?.verification_status || 'UPLOADED'})`);
+
+      trackEvent('kyc_document_uploaded', {
+        document_type: docType,
+        file_name: file.name,
+        verification_status: data.document?.verification_status,
+        ocr_status: data.ocr?.status,
+        has_extracted_fields: Object.keys(ef).length > 0
+      });
+
       await go(nextStage);
     } catch {
       setDocError('Network error during document upload. Please retry.');
