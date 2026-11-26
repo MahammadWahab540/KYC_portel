@@ -16,6 +16,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [checkoutSubmitted, setCheckoutSubmitted] = useState(false);
 
   // Production Auth & Journey State (restored from sessionStorage across browser refreshes)
   const [authToken, setAuthToken] = useState<string | null>(() => {
@@ -884,17 +885,18 @@ export default function App() {
             <div className="bg-gradient-to-br from-[#7136ef] to-[#5635c5] p-5 rounded-2xl text-white shadow-md">
               <div className="text-xs uppercase opacity-80 font-bold tracking-wider">{finance.program}</div>
               <div className="text-2xl font-extrabold mt-1">{money(finance.balance)}</div>
-              <div className="text-xs opacity-90 mt-2 flex justify-between">
-                <span>Fee: {money(finance.course)}</span>
-                <span>Downpayment Paid: {money(finance.alreadyPaid)}</span>
+              <div className="text-xs opacity-90 mt-0.5 font-medium">Remaining Amount To Be Paid</div>
+              <div className="text-xs opacity-90 mt-2.5 pt-2 border-t border-white/20 flex justify-between">
+                <span>Total Amount to be Paid: {money(finance.course)}</span>
+                <span>Amount Paid to Company: {money(finance.alreadyPaid)}</span>
               </div>
             </div>
 
             <div className="space-y-3">
               {[
                 { id: 'emi', title: '0% Interest EMI Loan', desc: `Estimated EMI from ${money(minEmi)}/month (depends on NBFC)` },
-                { id: 'full', title: 'Full Payment', desc: 'Direct UPI, NetBanking or Debit Card', badge: 'Instant Access' },
-                { id: 'card', title: 'Credit Card EMI', desc: 'Convert balance with your personal bank card', badge: 'Fastest' }
+                { id: 'full', title: 'Full Payment', desc: 'Direct UPI, NetBanking or Debit Card' },
+                { id: 'card', title: 'Credit Card EMI', desc: 'Convert balance with your personal bank card' }
               ].map(opt => (
                 <div
                   key={opt.id}
@@ -906,7 +908,6 @@ export default function App() {
                   <div>
                     <div className="font-bold text-sm text-[#0c1b3b] flex items-center gap-2">
                       {opt.title}
-                      {opt.badge && <span className="text-[10px] bg-[#7136ef] text-white px-2 py-0.5 rounded-full font-bold">{opt.badge}</span>}
                     </div>
                     <div className="text-xs text-[#687894] mt-1">{opt.desc}</div>
                   </div>
@@ -941,7 +942,7 @@ export default function App() {
           <div className="space-y-6">
             <div className="text-xs font-bold uppercase tracking-wider text-[#7136ef]">Step 2 · EMI Loan Plan</div>
             <h1 className="text-2xl font-black text-[#0c1b3b]">Choose your EMI loan tenure</h1>
-            <p className="text-sm text-[#687894]">Select loan tenure length for {money(finance.balance)} with 0% interest.</p>
+            <p className="text-sm text-[#687894]">Select loan tenure length for Remaining Amount of {money(finance.balance)} with 0% interest.</p>
 
             <div className="space-y-3">
               {tenures.map(tVal => {
@@ -1019,104 +1020,152 @@ export default function App() {
 
             <div className="bg-white p-5 rounded-2xl border border-[#e0e7f2] shadow-sm space-y-3">
               <div className="flex justify-between text-sm py-1 border-b border-gray-100">
-                <span className="text-[#687894]">Program Fee</span>
+                <span className="text-[#687894]">Total Amount to be Paid</span>
                 <span className="font-bold">{money(finance.course)}</span>
               </div>
+              {finance.discount > 0 && (
+                <div className="flex justify-between text-sm py-1 border-b border-gray-100">
+                  <span className="text-[#687894]">Scholarship Discount</span>
+                  <span className="font-bold text-green-600">-{money(finance.discount)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm py-1 border-b border-gray-100">
-                <span className="text-[#687894]">Scholarship Discount</span>
-                <span className="font-bold text-green-600">-{money(finance.discount)}</span>
-              </div>
-              <div className="flex justify-between text-sm py-1 border-b border-gray-100">
-                <span className="text-[#687894]">Already Paid</span>
+                <span className="text-[#687894]">Amount Paid to Company</span>
                 <span className="font-bold text-blue-600">-{money(finance.alreadyPaid)}</span>
               </div>
               <div className="flex justify-between text-base font-black pt-2">
-                <span>Net Payable</span>
+                <span>Remaining Amount To Be Paid</span>
                 <span className="text-[#7136ef]">{money(finance.balance)}</span>
               </div>
             </div>
 
-            {appState.method === 'card' && (
-              <div className="bg-white p-5 rounded-2xl border border-[#e0e7f2] shadow-sm space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-[#102448] block mb-2">Which Credit Card do you have?</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                    {cardBanks.map(bank => {
-                      const selected = appState.creditCardBank === bank.id;
-                      return (
-                        <button
-                          key={bank.id}
-                          type="button"
-                          onClick={() => updateField('creditCardBank', bank.id)}
-                          className={`p-3 rounded-xl border-2 text-left transition-all flex items-center gap-2.5 ${
-                            selected ? 'border-[#7136ef] bg-[#f4efff]/70' : 'border-[#e0e7f2] bg-white hover:border-[#a9bbd4]'
-                          }`}
-                        >
-                          <svg width="28" height="28" viewBox="0 0 28 28" className="flex-shrink-0 rounded-lg">
-                            <rect width="28" height="28" rx="6" fill={bank.bg} />
-                            <rect x="4" y="20" width="20" height="3" rx="1.5" fill={bank.accent} />
-                            <text x="14" y="14" textAnchor="middle" fill="#ffffff" fontSize="7" fontWeight="800" fontFamily="sans-serif">
-                              {bank.short}
-                            </text>
-                          </svg>
-                          <span className="text-xs font-bold text-[#0c1b3b] leading-tight">{bank.id}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+            {checkoutSubmitted ? (
+              <div className="bg-white p-6 rounded-2xl border border-green-200 shadow-sm space-y-4 text-center">
+                <div className="w-12 h-12 bg-green-100 text-green-700 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-6 h-6" />
                 </div>
-
                 <div>
-                  <label className="text-xs font-bold text-[#102448] block mb-1.5">Available Credit Card Limit (₹)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={appState.creditCardLimit}
-                    onChange={e => updateField('creditCardLimit', e.target.value)}
-                    placeholder={`e.g. ${finance.balance}`}
-                    className="nxt-input font-bold"
-                  />
-                  {appState.creditCardLimit && (
-                    <div className={`text-[11px] mt-1.5 font-semibold ${hasSufficientLimit ? 'text-green-600' : 'text-amber-600'}`}>
-                      {hasSufficientLimit
-                        ? `Covers full ${money(finance.balance)} net payable.`
-                        : `Below ${money(finance.balance)} — our team can assist with split payment.`}
-                    </div>
-                  )}
+                  <h3 className="text-lg font-black text-[#0c1b3b]">Payment Request Received</h3>
+                  <p className="text-xs text-[#687894] mt-1.5 leading-relaxed">
+                    Our Academic Onboarding team has received your {appState.method === 'card' ? 'Credit Card EMI' : 'Full Payment'} request and will contact you on <b>{appState.countryCode} {appState.phone}</b> to share the secure payment link.
+                  </p>
+                </div>
+                <div className="bg-[#f8fafc] p-3.5 rounded-xl border border-[#e2e8f0] text-xs text-[#475569] text-left">
+                  <b>Please Note:</b> Class access will be unlocked after your payment of <b>{money(finance.balance)}</b> is completed and verified by our team.
+                </div>
+                <div className="pt-2 flex flex-col gap-2">
+                  <a
+                    href={`https://wa.me/919392901586?text=${encodeURIComponent(
+                      `Hi Suresh, I requested ${appState.method === 'card' ? 'Credit Card EMI' : 'Full Payment'} for my enrollment. Please share the payment link.`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="nxt-btn-primary flex items-center justify-center gap-2"
+                  >
+                    <span>Connect with PRE on WhatsApp</span>
+                  </a>
+                  <button
+                    onClick={() => {
+                      setCheckoutSubmitted(false);
+                      go('payment');
+                    }}
+                    className="w-full py-2.5 text-xs font-bold text-[#7136ef] hover:underline"
+                  >
+                    Change Payment Method
+                  </button>
                 </div>
               </div>
+            ) : (
+              <>
+                {appState.method === 'card' && (
+                  <div className="bg-white p-5 rounded-2xl border border-[#e0e7f2] shadow-sm space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-[#102448] block mb-2">Which Credit Card do you have?</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        {cardBanks.map(bank => {
+                          const selected = appState.creditCardBank === bank.id;
+                          return (
+                            <button
+                              key={bank.id}
+                              type="button"
+                              onClick={() => updateField('creditCardBank', bank.id)}
+                              className={`p-3 rounded-xl border-2 text-left transition-all flex items-center gap-2.5 ${
+                                selected ? 'border-[#7136ef] bg-[#f4efff]/70' : 'border-[#e0e7f2] bg-white hover:border-[#a9bbd4]'
+                              }`}
+                            >
+                              <svg width="28" height="28" viewBox="0 0 28 28" className="flex-shrink-0 rounded-lg">
+                                <rect width="28" height="28" rx="6" fill={bank.bg} />
+                                <rect x="4" y="20" width="20" height="3" rx="1.5" fill={bank.accent} />
+                                <text x="14" y="14" textAnchor="middle" fill="#ffffff" fontSize="7" fontWeight="800" fontFamily="sans-serif">
+                                  {bank.short}
+                                </text>
+                              </svg>
+                              <span className="text-xs font-bold text-[#0c1b3b] leading-tight">{bank.id}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[#102448] block mb-1.5">Available Credit Card Limit (₹)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={appState.creditCardLimit}
+                        onChange={e => updateField('creditCardLimit', e.target.value)}
+                        placeholder={`e.g. ${finance.balance}`}
+                        className="nxt-input font-bold"
+                      />
+                      {appState.creditCardLimit && (
+                        <div className={`text-[11px] mt-1.5 font-semibold ${hasSufficientLimit ? 'text-green-600' : 'text-amber-600'}`}>
+                          {hasSufficientLimit
+                            ? `Covers full ${money(finance.balance)} net payable.`
+                            : `Below ${money(finance.balance)} — our team can assist with split payment.`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-[#f4efff] p-4 rounded-2xl border border-[#e2d4ff] text-xs text-[#4b23a3] flex items-start gap-3">
+                  <PhoneCall className="w-4 h-4 flex-shrink-0 mt-0.5 text-[#7136ef]" />
+                  <span>
+                    <b>Our team will connect with you</b> shortly on {appState.countryCode} {appState.phone || 'your registered number'} to share the secure payment link. Class access will be unlocked after payment is verified.
+                  </span>
+                </div>
+
+                <button
+                  disabled={isLoading}
+                  onClick={async () => {
+                    if (appState.method === 'card' && (!appState.creditCardBank || !appState.creditCardLimit)) {
+                      showToast('Please select your credit card bank and enter your available limit.');
+                      return;
+                    }
+                    setIsLoading(true);
+                    await fetch('/api/v1/support/exception', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        phone: appState.phone,
+                        reason: appState.method === 'card'
+                          ? `CREDIT_CARD_EMI (${appState.creditCardBank}, Limit: ₹${appState.creditCardLimit})`
+                          : 'FULL_PAYMENT_CALLBACK',
+                        remainingAmount: finance.balance,
+                        totalFee: finance.course
+                      })
+                    }).catch(() => {});
+                    setIsLoading(false);
+                    setCheckoutSubmitted(true);
+                    showToast('Payment request submitted! Our team will connect with you shortly.');
+                  }}
+                  className="nxt-btn-primary"
+                >
+                  <PhoneCall className="w-4 h-4" />
+                  <span>Submit Payment Request</span>
+                </button>
+              </>
             )}
-
-            <div className="bg-[#f4efff] p-4 rounded-2xl border border-[#e2d4ff] text-xs text-[#4b23a3] flex items-start gap-3">
-              <PhoneCall className="w-4 h-4 flex-shrink-0 mt-0.5 text-[#7136ef]" />
-              <span>
-                <b>Our team will connect with you</b> shortly on {appState.countryCode} {appState.phone || 'your registered number'} to share the secure payment link and activate your classes.
-              </span>
-            </div>
-
-            <button
-              onClick={async () => {
-                if (appState.method === 'card' && (!appState.creditCardBank || !appState.creditCardLimit)) {
-                  showToast('Please select your credit card bank and enter your available limit.');
-                  return;
-                }
-                await fetch('/api/v1/support/exception', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    reason: appState.method === 'card'
-                      ? `CREDIT_CARD_EMI (${appState.creditCardBank}, Limit: ₹${appState.creditCardLimit})`
-                      : 'FULL_PAYMENT_CALLBACK'
-                  })
-                }).catch(() => {});
-                showToast('Request submitted! Our team will connect with you shortly.');
-                go('classAccess');
-              }}
-              className="nxt-btn-primary"
-            >
-              <PhoneCall className="w-4 h-4" />
-              <span>Proceed — Our Team Will Connect With You</span>
-            </button>
           </div>
         );
       }

@@ -8,9 +8,12 @@ export interface EnrollmentFinance {
   program: string;
   programCode?: string;
   course: number;
+  totalAmountToBePaid?: number;
   discount: number;
   alreadyPaid: number;
+  amountPaidToCompany?: number;
   balance: number;
+  remainingAmountToBePaid?: number;
   assignedPre: string;
   assignedPrePhone: string;
 }

@@ -66,6 +66,7 @@ export class SalesforceService {
           'Amount_to_be_Receive__c',
           'Total_Amount_PRE__c',
           'Partial_amount_paid_to_company__c',
+          'Amount_Paid_Till_Now_To_Nxtwave_PRE__c',
           'Total_Discount_NBFC_Other_PRE__c',
           'Coupon_Discount_Amount__c',
           'Payment_Plan_Discount__c',
@@ -93,14 +94,20 @@ export class SalesforceService {
           const data = await res.json();
           const rec = data.records?.[0];
           if (rec) {
+            // 1. Total program fee from SF: Total_Amount_to_be_Paid__c
             const course = Number(rec.Total_Amount_to_be_Paid__c ?? rec.Amount_to_be_Receive__c ?? 0);
+
+            // 2. Amount Paid to Company (so far amount they paid): Total_Amount_PRE__c
+            const alreadyPaid = Number(rec.Total_Amount_PRE__c ?? rec.Partial_amount_paid_to_company__c ?? rec.Amount_Paid_Till_Now_To_Nxtwave_PRE__c ?? 0);
+
+            // 3. Remaining Amount To Be Paid (amount they needed to pay): Remaining_Amount_To_Be_Paid_PRE__c
+            const balance = Number(rec.Remaining_Amount_To_Be_Paid_PRE__c ?? (course - alreadyPaid));
+
             const discount =
+              Number(rec.Payment_Plan_Discount__c || 0) +
               Number(rec.Total_Discount_NBFC_Other_PRE__c || 0) +
               Number(rec.Coupon_Discount_Amount__c || 0) +
-              Number(rec.Payment_Plan_Discount__c || 0) +
               Number(rec.Referral_Discount__c || 0);
-            const alreadyPaid = Number(rec.Total_Amount_PRE__c ?? rec.Partial_amount_paid_to_company__c ?? 0);
-            const balance = Number(rec.Remaining_Amount_To_Be_Paid_PRE__c ?? (course - discount - alreadyPaid));
 
             let programName = 'NxtWave Academy Specialization';
             let programCode = 'Edge';
@@ -121,13 +128,17 @@ export class SalesforceService {
             return {
               source: 'SALESFORCE',
               recordId: rec.Id,
+              studentName: rec.Name || 'Student',
               enrollment: {
                 program: programName,
                 programCode,
-                course,
+                course, // Total Amount to be Paid (as total program fee)
+                totalAmountToBePaid: course,
                 discount,
-                alreadyPaid,
-                balance,
+                alreadyPaid, // Amount Paid to Company (so far amount they paid)
+                amountPaidToCompany: alreadyPaid,
+                balance, // Remaining Amount To Be Paid (amount they needed to pay)
+                remainingAmountToBePaid: balance,
                 assignedPre: rec.Owner?.Name || 'NxtWave PRE Advisor',
                 assignedPrePhone: '+91 93929 01586'
               }
