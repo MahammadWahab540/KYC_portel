@@ -1,7 +1,7 @@
 export async function onRequest(context) {
   const url = new URL(context.request.url);
   // Forward all /api/v1/* requests to the live backend tunnel
-  const backendBase = 'https://talent-eyes-yorkshire-wind.trycloudflare.com';
+  const backendBase = 'https://arise-cleared-transcription-carrier.trycloudflare.com';
   const targetUrl = new URL(url.pathname + url.search, backendBase);
 
   const modifiedRequest = new Request(targetUrl.toString(), {
