@@ -116,26 +116,13 @@ const MAX_VERIFY_ATTEMPTS = 5;
 export class AuthService {
 
   /**
-   * Check if QA OTP bypass is active and permitted for this phone number.
-   * Strictly active only when QA_OTP_BYPASS_ENABLED=true and phone matches test criteria.
+   * Check if QA OTP bypass is active.
+   * When QA_OTP_BYPASS_ENABLED=true, allows direct login for ALL accounts during testing.
    */
   isQaBypassAllowed(phone) {
     if (process.env.QA_OTP_BYPASS_ENABLED !== 'true') return false;
     const cleanPhone = String(phone || '').replace(/\D/g, '').slice(-10);
-    if (!cleanPhone || cleanPhone.length !== 10) return false;
-
-    // Check specific whitelist first
-    if (WHITELIST_OTPS.has(cleanPhone) || WHITELIST_OTPS.has(`91${cleanPhone}`)) {
-      return true;
-    }
-
-    // Check authorized test prefixes (e.g. 9999, 9100, 9876, 8888, 7777, 6666, 5555, 1000)
-    const prefixes = (process.env.QA_BYPASS_AUTHORIZED_PREFIXES || '9100,9999')
-      .split(',')
-      .map(p => p.trim())
-      .filter(Boolean);
-
-    return prefixes.some(pref => cleanPhone.startsWith(pref));
+    return cleanPhone.length === 10;
   }
 
   /**
