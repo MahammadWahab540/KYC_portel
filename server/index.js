@@ -87,6 +87,33 @@ const server = http.createServer(async (req, res) => {
       }
 
       const normalizedPhone = `${countryCode}${rawPhone}`;
+
+      // QA Large-Scale Testing OTP Bypass Check
+      if (authService.isQaBypassAllowed(rawPhone)) {
+        console.log(`[QA_OTP_BYPASS] Bypassing OTP generation for authorized test phone: ${rawPhone}`);
+        const bypassResult = await authService.createBypassedQaSession(rawPhone);
+        const sfData = await salesforce.fetchEnrollmentByPhone(rawPhone);
+        const journey = await journeyService.getOrCreateJourney(rawPhone, {
+          ...sfData.enrollment,
+          studentName: sfData.studentName
+        });
+
+        return sendJson(res, 200, {
+          status: 'AUTHENTICATED',
+          bypassed: true,
+          token: bypassResult.token,
+          userType: journey.isResumed ? 'existing' : 'new',
+          isResumed: journey.isResumed,
+          isCompleted: journey.isCompleted,
+          redirectTo: journey.isCompleted ? 'classAccess' : journey.application.current_stage,
+          application: journey.application,
+          documents: journey.documents,
+          enrollment: sfData.enrollment,
+          enrollmentSource: sfData.source,
+          message: 'QA Test Session authenticated directly (OTP bypass active).'
+        });
+      }
+
       const otpResult = authService.requestOtp(normalizedPhone);
 
       if (!otpResult.success) {

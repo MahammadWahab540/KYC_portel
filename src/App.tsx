@@ -193,6 +193,44 @@ export default function App() {
         return;
       }
 
+      // Handle QA OTP Bypass response: directly transition to active journey
+      if (data.status === 'AUTHENTICATED' && data.token) {
+        setAuthToken(data.token);
+        try {
+          sessionStorage.setItem('nxtwave_auth_token', data.token);
+        } catch {}
+        if (data.enrollment) {
+          setFinance(data.enrollment);
+          setFinanceSource(data.enrollmentSource === 'SALESFORCE' ? 'SALESFORCE' : 'FALLBACK_LOCAL');
+        }
+        if (data.application?.id) {
+          setApplicationId(data.application.id);
+        }
+        if (Array.isArray(data.documents)) {
+          setUploadedDocs(data.documents);
+        }
+
+        const restoredPayload = data.application?.statePayload || {};
+        const targetStage = data.isCompleted
+          ? 'classAccess'
+          : (data.application?.current_stage && data.application.current_stage !== 'auth' && data.application.current_stage !== 'authOtp'
+              ? data.application.current_stage
+              : 'payment');
+
+        setAppState(prev => ({
+          ...prev,
+          ...restoredPayload,
+          countryCode: prev.countryCode,
+          phone: cleanPhone,
+          studentOtp: '',
+          history: Array.isArray(data.application?.history) ? data.application.history : [],
+          stage: targetStage
+        }));
+
+        showToast(data.isResumed ? `Welcome back! Resumed your application.` : 'Authenticated test session initialized.');
+        return;
+      }
+
       setResendCooldown(data.resendCooldown || 30);
       setOtpExpiresIn(data.expiresIn || 300);
       updateField('studentOtp', '');
