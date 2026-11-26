@@ -33,6 +33,18 @@ test('NBFC Status Engine maps DISBURSED status and unlocks class access CTA', ()
   assert.equal(result.cadenceStages[4].isCompleted, true);
 });
 
+test('NBFC Status Engine maps EMI Setup Done and unlocks class access CTA', () => {
+  const result = normalizeNbfcStatus({
+    Choose_NBFC_PRE__c: 'Fibe',
+    Fibe_Overall_Stages__c: 'EMI Setup Done'
+  });
+
+  assert.equal(result.statusCode, 'EMI_SETUP_COMPLETED');
+  assert.equal(result.cadenceStep, 5);
+  assert.equal(result.callToAction.action, 'GO_TO_CLASS_ACCESS');
+  assert.equal(result.classAccessEligible, true);
+});
+
 test('NBFC Status Engine maps EMI_SETUP_PENDING and provides auto-debit CTA', () => {
   const result = normalizeNbfcStatus({
     Choose_NBFC_PRE__c: 'Fibe',

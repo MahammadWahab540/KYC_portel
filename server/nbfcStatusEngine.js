@@ -163,30 +163,44 @@ export function normalizeNbfcStatus(record = null, childRecord = null) {
     };
   }
 
-  // 3. EMI SETUP COMPLETED
+  // 3. EMI SETUP COMPLETED / EMI SETUP DONE
   if (
     s.includes('emi setup done') ||
+    s.includes('emi_setup_done') ||
+    s.includes('emi setup complete') ||
+    s.includes('emi_setup_complete') ||
+    s.includes('mandate done') ||
+    s.includes('mandate_done') ||
     s.includes('mandate success') ||
+    s.includes('mandate complete') ||
     s.includes('nach completed') ||
-    s.includes('enach registered')
+    s.includes('nach done') ||
+    s.includes('enach registered') ||
+    s.includes('enach done') ||
+    s.includes('enach completed') ||
+    s.includes('auto-debit setup done') ||
+    s.includes('auto debit done') ||
+    s.includes('auto-debit configured') ||
+    s.includes('repayment setup done')
   ) {
     return {
       statusCode: 'EMI_SETUP_COMPLETED',
-      statusLabel: 'Auto-Debit Configured',
+      statusLabel: 'EMI Setup Done (Auto-Debit Configured)',
       activeLender,
       userMessage: 'Your monthly auto-debit mandate (0% interest) is successfully registered.',
-      guidanceMessage: 'We are completing the final disbursement formalities with the lender.',
-      cadenceStep: 4,
-      cadenceStages: getCadenceStages(4, false),
+      guidanceMessage: 'EMI setup is complete. Class access has been provisioned.',
+      cadenceStep: 5,
+      cadenceStages: getCadenceStages(5, false),
       callToAction: {
-        label: 'Refresh Status',
-        action: 'REFRESH',
-        primary: false,
+        label: 'Activate Class Access',
+        action: 'GO_TO_CLASS_ACCESS',
+        primary: true,
       },
-      classAccessEta: 'Expected today',
+      classAccessEligible: true,
+      classAccessEta: 'Instant Access Available',
       lastUpdated,
       rawStatus,
-      appliedLoanAmount: Number(childRecord?.Applied_Loan_Amount_PRE__c || 0),
+      appliedLoanAmount: Number(childRecord?.Applied_Loan_Amount_PRE__c || record?.Applied_Loan_Amount_PRE__c || 0),
       approvedLoanAmount: Number(childRecord?.Effective_Approved_Amount__c || 0),
       applicationReferenceId: childRecord?.NBFC_Application_Reference_Number_PRE__c || childRecord?.Loan_Id__c || childRecord?.Name || null
     };

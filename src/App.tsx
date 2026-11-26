@@ -89,6 +89,13 @@ export default function App() {
         const data = await res.json();
         if (data.nbfc) {
           setNbfcLive(data.nbfc);
+          if (
+            data.nbfc.statusCode === 'EMI_SETUP_COMPLETED' ||
+            data.nbfc.statusCode === 'DISBURSED' ||
+            data.nbfc.classAccessEligible === true
+          ) {
+            go('classAccess');
+          }
         }
       } else {
         if (!silent) setNbfcError('Unable to sync latest lender status.');
@@ -2111,7 +2118,7 @@ export default function App() {
             {/* Contextual Action Button */}
             {isDisbursed ? (
               <button onClick={() => go('classAccess')} className="nxt-btn-primary">
-                <span>Proceed to Class Activation</span>
+                <span>Go to Learning Platform</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             ) : isRejected ? (

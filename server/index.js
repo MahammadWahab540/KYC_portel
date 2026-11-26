@@ -93,10 +93,19 @@ const server = http.createServer(async (req, res) => {
         console.log(`[QA_OTP_BYPASS] Bypassing OTP generation for authorized test phone: ${rawPhone}`);
         const bypassResult = await authService.createBypassedQaSession(rawPhone);
         const sfData = await salesforce.fetchEnrollmentByPhone(rawPhone);
+        const sfNbfc = await salesforce.fetchNbfcStatusByPhone(rawPhone);
+        const normalizedNbfc = normalizeNbfcStatus(sfNbfc.parentRecord, sfNbfc.childRecord);
+        const isEmiSetupDone = normalizedNbfc.statusCode === 'EMI_SETUP_COMPLETED' ||
+          normalizedNbfc.statusCode === 'DISBURSED' ||
+          sfNbfc.parentRecord?.Provide_Class_Access__c === true;
+
         const journey = await journeyService.getOrCreateJourney(rawPhone, {
           ...sfData.enrollment,
           studentName: sfData.studentName
         });
+
+        const isCompleted = journey.isCompleted || isEmiSetupDone;
+        const redirectTo = isCompleted ? 'classAccess' : journey.application.current_stage;
 
         return sendJson(res, 200, {
           status: 'AUTHENTICATED',
@@ -104,8 +113,8 @@ const server = http.createServer(async (req, res) => {
           token: bypassResult.token,
           userType: journey.isResumed ? 'existing' : 'new',
           isResumed: journey.isResumed,
-          isCompleted: journey.isCompleted,
-          redirectTo: journey.isCompleted ? 'classAccess' : journey.application.current_stage,
+          isCompleted,
+          redirectTo,
           application: journey.application,
           documents: journey.documents,
           enrollment: sfData.enrollment,
@@ -174,17 +183,26 @@ const server = http.createServer(async (req, res) => {
       }
 
       const sfData = await salesforce.fetchEnrollmentByPhone(rawPhone);
+      const sfNbfc = await salesforce.fetchNbfcStatusByPhone(rawPhone);
+      const normalizedNbfc = normalizeNbfcStatus(sfNbfc.parentRecord, sfNbfc.childRecord);
+      const isEmiSetupDone = normalizedNbfc.statusCode === 'EMI_SETUP_COMPLETED' ||
+        normalizedNbfc.statusCode === 'DISBURSED' ||
+        sfNbfc.parentRecord?.Provide_Class_Access__c === true;
+
       const journey = await journeyService.getOrCreateJourney(rawPhone, {
         ...sfData.enrollment,
         studentName: sfData.studentName
       });
 
+      const isCompleted = journey.isCompleted || isEmiSetupDone;
+      const redirectTo = isCompleted ? 'classAccess' : journey.application.current_stage;
+
       return sendJson(res, 200, {
         token: verifyResult.token,
         userType: journey.isResumed ? 'existing' : 'new',
         isResumed: journey.isResumed,
-        isCompleted: journey.isCompleted,
-        redirectTo: journey.isCompleted ? 'classAccess' : journey.application.current_stage,
+        isCompleted,
+        redirectTo,
         phoneMasked: verifyResult.phoneMasked,
         enrollment: sfData.enrollment,
         enrollmentSource: sfData.source,
@@ -397,8 +415,10 @@ const server = http.createServer(async (req, res) => {
       const sfRes = await salesforce.fetchNbfcStatusByPhone(auth.phone);
       const normalized = normalizeNbfcStatus(sfRes.parentRecord, sfRes.childRecord);
 
-      // Verify class access status independently
-      const classAccessEligible = normalized.statusCode === 'DISBURSED' || sfRes.parentRecord?.Provide_Class_Access__c === true;
+      // Verify class access status independently (EMI setup done or Disbursed)
+      const classAccessEligible = normalized.statusCode === 'DISBURSED' ||
+        normalized.statusCode === 'EMI_SETUP_COMPLETED' ||
+        sfRes.parentRecord?.Provide_Class_Access__c === true;
 
       return sendJson(res, 200, {
         success: true,
