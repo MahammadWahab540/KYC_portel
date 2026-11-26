@@ -15,6 +15,7 @@
     "lucide-react": "^0.344.0",
     "mixpanel-browser": "^2.86.0",
     "pg": "^8.23.1",
+    "posthog-js": "^1.455.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

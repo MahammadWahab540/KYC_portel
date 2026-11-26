@@ -1,4 +1,5 @@
 import mixpanel from 'mixpanel-browser';
+import { initPostHog, identifyPostHogUser, capturePostHogEvent, resetPostHogUser } from './posthog.ts';
 
 // Default / fallback token or read from Vite env (VITE_MIXPANEL_TOKEN)
 const metaEnv = (import.meta as any).env || {};
@@ -20,10 +21,13 @@ export const initMixpanel = () => {
   } catch (err) {
     console.warn('[Mixpanel] Initialization failed:', err);
   }
+
+  // Also initialize PostHog
+  initPostHog();
 };
 
 /**
- * Identify authenticated student
+ * Identify authenticated student across Mixpanel and PostHog
  * Always called on login and session resume
  */
 export const identifyUser = (userId: string, traits: Record<string, any> = {}) => {
@@ -50,10 +54,19 @@ export const identifyUser = (userId: string, traits: Record<string, any> = {}) =
   } catch (err) {
     console.warn('[Mixpanel] Identify failed:', err);
   }
+
+  // PostHog Identify
+  identifyPostHogUser(userId, {
+    name: traits.name,
+    phone: traits.phone,
+    program: traits.program,
+    course_fee: traits.courseFee,
+    balance_amount: traits.balanceAmount
+  });
 };
 
 /**
- * Track discrete KYC funnel events with snake_case naming convention
+ * Track discrete KYC funnel events across Mixpanel and PostHog
  */
 export const trackEvent = (eventName: string, properties: Record<string, any> = {}) => {
   if (!isInitialized) initMixpanel();
@@ -68,10 +81,13 @@ export const trackEvent = (eventName: string, properties: Record<string, any> = 
   } catch (err) {
     console.warn(`[Mixpanel] Track failed for ${eventName}:`, err);
   }
+
+  // PostHog Event Capture
+  capturePostHogEvent(eventName, properties);
 };
 
 /**
- * Reset identity on logout
+ * Reset identity on logout across Mixpanel and PostHog
  */
 export const resetUser = () => {
   if (!isInitialized) return;
@@ -80,7 +96,9 @@ export const resetUser = () => {
   } catch (err) {
     console.warn('[Mixpanel] Reset failed:', err);
   }
+  resetPostHogUser();
 };
 
 export default mixpanel;
+
 
