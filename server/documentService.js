@@ -97,6 +97,7 @@ export class DocumentService {
 
     // 1. Pre-Extraction Document Type Validation
     const textExtraction = await ocrService.extractText(buffer, safeName, mimeType);
+    console.log(`[DocumentService] Upload received: type=${documentType}, file=${safeName}, size=${buffer.length}, extractedTextSnippet=${JSON.stringify(textExtraction.text.slice(0, 300))}`);
     const validation = validateExpectedDocument(documentType, textExtraction.text, { fileName: safeName, mimeType });
 
     if (!validation.isValid) {

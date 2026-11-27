@@ -568,7 +568,7 @@ export default function App() {
         setDocError('Invalid document. Please upload the front side of your Aadhaar card.');
         return;
       }
-      if (docType === 'AADHAAR_BACK' && !ef.pincode && !ef.completeAddress) {
+      if (docType === 'AADHAAR_BACK' && !ef.pincode && !ef.completeAddress && !ef.aadhaarNumber) {
         setDocError('Invalid document. Please upload the back side of your Aadhaar card.');
         return;
       }

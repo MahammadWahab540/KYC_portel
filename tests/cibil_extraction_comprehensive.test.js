@@ -101,3 +101,51 @@ test('CIBIL Comprehensive: Non-CIBIL document rejected with mandated error messa
   assert.equal(res.success, false);
   assert.notEqual(res.cibilScore, '782');
 });
+
+test('CIBIL Comprehensive: Mobile screenshots (Google Pay, PhonePe, OneScore) are accepted and score extracted', () => {
+  const ocr = new DocumentIntelligenceService();
+
+  // Google Pay CIBIL screenshot
+  const gpayText = `
+    Check your CIBIL score for free
+    Your CIBIL Score is 750
+    Excellent
+    Powered by TransUnion CIBIL
+    Updated 2 days ago
+  `;
+  const valGpay = validateExpectedDocument('CIBIL_REPORT', gpayText);
+  assert.equal(valGpay.isValid, true);
+  const resGpay = ocr.parseCibilReport(gpayText);
+  assert.equal(resGpay.success, true);
+  assert.equal(resGpay.cibilScore, '750');
+  assert.equal(resGpay.isEligible, true);
+
+  // PhonePe Experian screenshot
+  const phonepeText = `
+    PhonePe Credit Health
+    Score: 780
+    Out of 900
+    Powered by Experian
+  `;
+  const valPe = validateExpectedDocument('CIBIL_REPORT', phonepeText);
+  assert.equal(valPe.isValid, true);
+  const resPe = ocr.parseCibilReport(phonepeText);
+  assert.equal(resPe.success, true);
+  assert.equal(resPe.cibilScore, '780');
+
+  // Full CIBIL report containing applicant Aadhaar and PAN numbers
+  const cibilWithAadhaar = `
+    TRANSUNION CIBIL CONSUMER CREDIT REPORT
+    Control Number: 10928374
+    CIBIL Score: 782
+    Applicant Name: RAMESH KUMAR
+    PAN: ABCDE1234F
+    Aadhaar Number: 2795 0437 1520
+    Address: Road 1, Hyderabad 500081
+  `;
+  const valFull = validateExpectedDocument('CIBIL_REPORT', cibilWithAadhaar);
+  assert.equal(valFull.isValid, true);
+  const resFull = ocr.parseCibilReport(cibilWithAadhaar);
+  assert.equal(resFull.success, true);
+  assert.equal(resFull.cibilScore, '782');
+});

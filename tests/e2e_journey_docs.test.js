@@ -48,7 +48,22 @@ test('E2E: Journey persistence, resume across logins, real document upload, pass
   assert.equal(trData.application.current_stage, 'panUpload');
 
   // 3. Upload a real document (> 1KB PNG buffer)
-  const fakePngBuffer = Buffer.alloc(6000, 0x89);
+  const { createCanvas } = await import('@napi-rs/canvas');
+  const canvas = createCanvas(600, 350);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, 600, 350);
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillText('INCOME TAX DEPARTMENT GOVT OF INDIA', 30, 50);
+  ctx.font = '18px sans-serif';
+  ctx.fillText('Permanent Account Number Card', 30, 90);
+  ctx.font = 'bold 24px sans-serif';
+  ctx.fillText('BZCPK8921L', 30, 150);
+  ctx.font = '18px sans-serif';
+  ctx.fillText('Name: ANITA DESHMUKH', 30, 200);
+  ctx.fillText('DOB: 22/08/1995', 30, 240);
+  const fakePngBuffer = canvas.toBuffer('image/png');
   const upRes = await fetch(`${BASE}/api/v1/documents/upload`, {
     method: 'POST',
     headers: {

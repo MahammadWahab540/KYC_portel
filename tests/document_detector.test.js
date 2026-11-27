@@ -140,3 +140,31 @@ test('Document Validation: cross-mismatches are strictly rejected with mandated 
   assert.equal(r4.isValid, false);
   assert.equal(r4.error, 'Invalid document. Please upload a valid PAN card.');
 });
+
+test('Document Detection: e-Aadhaar full letter sheet satisfies Aadhaar Front and Back', () => {
+  const eAadhaarText = `
+    Government of India
+    Unique Identification Authority of India
+    Enrolment No: 0000/00730/31588
+    To: Aanitha K
+    Address: Eraiyur, Perambalur, Tamil Nadu - 621212
+    Your Aadhaar No: 2795 0437 1520
+    INFORMATION
+    Aadhaar is a proof of identity, not of citizenship.
+    This is electronically generated letter.
+    DOB: 05/09/2001 Gender: Female
+    2795 0437 1520
+  `;
+  const detection = classifyDocument(eAadhaarText);
+  assert.equal(detection.detectedType, 'AADHAAR_COMBINED');
+
+  // e-Aadhaar full letter satisfies Aadhaar Front slot
+  const valFront = validateExpectedDocument('AADHAAR_FRONT', eAadhaarText);
+  assert.equal(valFront.isValid, true);
+  assert.equal(valFront.error, null);
+
+  // e-Aadhaar full letter satisfies Aadhaar Back slot
+  const valBack = validateExpectedDocument('AADHAAR_BACK', eAadhaarText);
+  assert.equal(valBack.isValid, true);
+  assert.equal(valBack.error, null);
+});

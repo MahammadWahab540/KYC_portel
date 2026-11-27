@@ -18,11 +18,66 @@ dotenv.config();
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
 
+let canvasModule = null;
+try {
+  canvasModule = require('@napi-rs/canvas');
+} catch (cErr) {
+  console.warn('[DocumentIntelligenceService] @napi-rs/canvas not available for image preprocessing:', cErr.message);
+}
+
 export class DocumentIntelligenceService {
   constructor(apiKey = process.env.GOOGLE_VISION_API_KEY) {
     this.apiKey = apiKey;
     this.providerName = 'PRODUCTION_OCR_PIPELINE';
     this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+  }
+
+  /**
+   * Adaptive image enhancement for low-resolution, scanned or compressed documents
+   */
+  async preprocessImage(fileBuffer) {
+    if (!canvasModule || !fileBuffer || fileBuffer.length < 100) {
+      return fileBuffer;
+    }
+    try {
+      const { createCanvas, loadImage } = canvasModule;
+      const img = await loadImage(fileBuffer);
+      const maxDim = Math.max(img.width, img.height);
+      let scale = 1;
+
+      if (maxDim < 800) {
+        scale = 3.5;
+      } else if (maxDim < 1400) {
+        scale = 2.0;
+      }
+
+      if (scale === 1 && maxDim >= 1400) {
+        return fileBuffer;
+      }
+
+      const targetW = Math.round(img.width * scale);
+      const targetH = Math.round(img.height * scale);
+      const canvas = createCanvas(targetW, targetH);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+
+      // Contrast enhancement: stretch dynamic range
+      const imgData = ctx.getImageData(0, 0, targetW, targetH);
+      const d = imgData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        let v = (gray - 128) * 1.4 + 128;
+        v = v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+        d[i] = v;
+        d[i + 1] = v;
+        d[i + 2] = v;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      return canvas.toBuffer('image/png');
+    } catch (err) {
+      console.warn('[DocumentIntelligenceService] Image preprocessing failed, falling back to raw buffer:', err.message);
+      return fileBuffer;
+    }
   }
 
   /**
@@ -132,14 +187,15 @@ export class DocumentIntelligenceService {
       }
     }
 
-    // Image OCR or Scanned Document OCR using Tesseract.js
+    // Image OCR or Scanned Document OCR using Tesseract.js with adaptive preprocessing
     try {
       const isJpeg = fileBuffer && fileBuffer.length > 3 && fileBuffer[0] === 0xff && fileBuffer[1] === 0xd8;
       const isPng = fileBuffer && fileBuffer.length > 8 && fileBuffer[0] === 0x89 && fileBuffer[1] === 0x50;
       const isWebp = fileBuffer && fileBuffer.length > 12 && fileBuffer.toString('ascii', 8, 12) === 'WEBP';
 
       if (isJpeg || isPng || isWebp) {
-        const { data } = await Tesseract.recognize(fileBuffer, 'eng');
+        const enhancedBuffer = await this.preprocessImage(fileBuffer);
+        const { data } = await Tesseract.recognize(enhancedBuffer, 'eng');
         const text = data?.text?.trim() || '';
         return {
           text,
@@ -186,6 +242,7 @@ export class DocumentIntelligenceService {
       case 'BANK_PROOF':
         return this.extractBankFields(fileBuffer, fileName);
       case 'CIBIL':
+      case 'CIBIL_REPORT':
         return this.extractCibilFields(fileBuffer, fileName);
       default:
         return { success: false, status: 'UNSUPPORTED', error: `Unsupported document type: ${documentType}` };
@@ -206,44 +263,19 @@ export class DocumentIntelligenceService {
     }
 
     const clean = text.replace(/\r/g, ' ');
-    const isBureauReport = /(transunion|cibil|experian|equifax|crif|credit\s*report|score\s*summary|credit\s*history|credit\s*information)/i.test(clean);
+    const isBureauReport = /(transunion|cibil|c1bil|experian|equifax|crif|credit\s*report|score\s*summary|credit\s*history|credit\s*information|credit\s*score|credit\s*health|your\s*score|onescore|paisabazaar|cir\b|credit|score)/i.test(clean);
 
-    // 1. Detect NH / NA / No Credit History
-    const nhMatch = clean.match(/(?:cibil\s*(?:transunion\s*)?score|credit\s*score|score)\s*[:\-\s]*(?:is\s*)?(NH|NA|-1|NO\s*HISTORY)/i) ||
-                    clean.match(/\b(NO\s*CREDIT\s*HISTORY\s*FOUND|INSUFFICIENT\s*CREDIT\s*HISTORY)\b/i);
-
-    if (nhMatch) {
-      return {
-        success: true,
-        provider: this.providerName,
-        documentType: 'CIBIL',
-        cibilScore: 'NH',
-        numericScore: null,
-        isNoHistory: true,
-        isEligible: false,
-        requiresManualReview: true,
-        bureau: 'TRANSUNION_CIBIL',
-        extractedFields: {
-          cibilScore: 'NH',
-          reportDate: this._extractReportDate(clean) || null,
-          fullName: this._extractHolderName(clean) || null
-        },
-        fields: {
-          score: { value: 'NH', confidence: 95.0, status: 'NO_HISTORY' }
-        },
-        confidence: 95.0
-      };
-    }
-
-    // 2. Extract numeric score (300 - 900)
-    // Priority patterns for explicit bureau scores
+    // 1. Priority: Extract explicit numeric score (300 - 900)
     const explicitPatterns = [
       /(?:cibil\s*(?:transunion\s*)?(?:score\s*(?:2\.0)?|rating)?)\s*[:\-\s]*([3-8][0-9]{2}|900)\b/i,
       /(?:experian\s*(?:credit\s*)?score)\s*[:\-\s]*([3-8][0-9]{2}|900)\b/i,
       /(?:equifax\s*(?:credit\s*)?score)\s*[:\-\s]*([3-8][0-9]{2}|900)\b/i,
       /(?:crif\s*(?:high\s*mark\s*)?score)\s*[:\-\s]*([3-8][0-9]{2}|900)\b/i,
       /(?:credit\s*score)\s*[:\-\s]*([3-8][0-9]{2}|900)\b/i,
-      /(?:score)\s*[:\-\s]*([3-8][0-9]{2}|900)\b/i
+      /(?:your\s*score|score)\s*[:\-\s]*([3-8][0-9]{2}|900)\b/i,
+      /\b([3-8][0-9]{2}|900)\s*(?:\/|\s*out\s*of\s*)900\b/i,
+      /\b([3-8][0-9]{2}|900)\s*(?:\n|\r|\s)+(?:cibil|experian|equifax|crif|credit|score|excellent|good|fair)\b/i,
+      /(?:cibil|experian|equifax|crif|credit|score|excellent|good|fair)\s*(?:\n|\r|\s)+([3-8][0-9]{2}|900)\b/i
     ];
 
     let extractedScore = null;
@@ -261,7 +293,36 @@ export class DocumentIntelligenceService {
       }
     }
 
-    // Fallback if bureau text is present and has a 3-digit score
+    // 2. If no explicit numeric score, detect NH / NA / No Credit History
+    if (!extractedScore) {
+      const nhMatch = clean.match(/(?:cibil\s*(?:transunion\s*)?score|credit\s*score|score)\s*[:\-\s]*(?:is\s*)?\b(NH|NA|-1|NO\s*HISTORY)\b/i) ||
+                      clean.match(/\b(NO\s*CREDIT\s*HISTORY\s*FOUND|INSUFFICIENT\s*CREDIT\s*HISTORY|NO\s*CREDIT\s*HISTORY)\b/i);
+
+      if (nhMatch) {
+        return {
+          success: true,
+          provider: this.providerName,
+          documentType: 'CIBIL',
+          cibilScore: 'NH',
+          numericScore: null,
+          isNoHistory: true,
+          isEligible: false,
+          requiresManualReview: true,
+          bureau: 'TRANSUNION_CIBIL',
+          extractedFields: {
+            cibilScore: 'NH',
+            reportDate: this._extractReportDate(clean) || null,
+            fullName: this._extractHolderName(clean) || null
+          },
+          fields: {
+            score: { value: 'NH', confidence: 95.0, status: 'NO_HISTORY' }
+          },
+          confidence: 95.0
+        };
+      }
+    }
+
+    // 3. Fallback if bureau text is present and has a 3-digit score
     if (!extractedScore && isBureauReport) {
       const genericScore = clean.match(/\b([3-8][0-9]{2}|900)\b/);
       if (genericScore) {
@@ -342,7 +403,8 @@ Return ONLY a valid JSON object:
     }
 
     // 2. Extract embedded text from PDF or Tesseract OCR
-    const { text, confidence, method } = await this.extractText(fileBuffer, fileName, 'application/pdf');
+    const detectedMime = this.getMimeType(fileName);
+    const { text, confidence, method } = await this.extractText(fileBuffer, fileName, detectedMime);
     const result = this.parseCibilReport(text);
     if (result.success) {
       result.status = 'OCR_COMPLETED';
@@ -519,7 +581,7 @@ Extract the following fields and return ONLY a JSON object:
       isPreMasked = true;
     }
 
-    const isBack = docType === 'AADHAAR_BACK' || /address/i.test(text);
+    const isBack = docType === 'AADHAAR_BACK';
 
     // If front side and no Aadhaar number found, report error
     if (!isBack && !aadhaarNumber) {
@@ -530,8 +592,8 @@ Extract the following fields and return ONLY a JSON object:
       };
     }
 
-    // If back side and no PIN code found
-    if (isBack && !pinMatch) {
+    // If back side and neither PIN code nor Aadhaar number found
+    if (isBack && !pinMatch && !aadhaarNumber) {
       return {
         success: false,
         status: 'ADDRESS_NOT_FOUND',
@@ -548,17 +610,38 @@ Extract the following fields and return ONLY a JSON object:
     let city = '';
     let state = '';
 
-    if (isBack) {
-      const addressIdx = text.search(/Address:?/i);
-      if (addressIdx !== -1) {
-        completeAddress = text.substring(addressIdx).replace(/Address:?/i, '').trim();
+    if (isBack || /address/i.test(text)) {
+      let rawAddressBlock = '';
+      const addressMatch = text.match(/(?:Address|To)\s*[:\-\s]?\s*([\s\S]*)/i);
+      if (addressMatch) {
+        rawAddressBlock = addressMatch[1];
       } else {
-        completeAddress = text.trim();
+        const coMatch = text.match(/(?:(?:^|\n)\s*(?:S\/O|D\/O|W\/O|C\/O|Care\s*of)\s*[:\-\s]?[\s\S]*)/i);
+        if (coMatch) rawAddressBlock = coMatch[0];
       }
 
-      const addressLines = completeAddress.split('\n').map(l => l.trim()).filter(Boolean);
-      if (addressLines.length > 0) {
-        street = addressLines.slice(0, Math.min(2, addressLines.length)).join(', ');
+      if (rawAddressBlock) {
+        const endCutoff = rawAddressBlock.search(/(?:\b[2-9]{1}[0-9]{3}\s?[0-9]{4}\s?[0-9]{4}\b|www\.uidai\.gov\.in|help@uidai|1947|information|mera\s*aadhaar)/i);
+        if (endCutoff !== -1) {
+          rawAddressBlock = rawAddressBlock.substring(0, endCutoff);
+        }
+
+        const validLines = rawAddressBlock.split('\n')
+          .map(l => l.trim())
+          .filter(l => {
+            if (l.length < 3) return false;
+            const letters = (l.match(/[a-zA-Z]/g) || []).length;
+            if (letters < 3) return false;
+            const symbols = (l.match(/[^a-zA-Z0-9\s,.\-\/#]/g) || []).length;
+            if (symbols > letters * 0.4) return false;
+            if (/(?:government|authority|identification|aadhaar|ardm|anmann|unique|department)/i.test(l)) return false;
+            return true;
+          });
+
+        if (validLines.length > 0) {
+          completeAddress = validLines.join('\n');
+          street = validLines.slice(0, Math.min(2, validLines.length)).join(', ');
+        }
       }
 
       // Extract state name if present
@@ -568,20 +651,33 @@ Extract the following fields and return ONLY a JSON object:
       else if (/bengaluru|bangalore/i.test(text)) city = 'Bengaluru';
       else if (/mumbai/i.test(text)) city = 'Mumbai';
       else if (/chennai/i.test(text)) city = 'Chennai';
+      else if (/perambal/i.test(text)) city = 'Perambalur';
     }
 
     // Name extraction for front
     let fullName = '';
     if (!isBack) {
-      const nameMatch = text.match(/(?:Name)\s*[:\-]?\s*([A-Za-z\s]{3,40})/i);
+      const nameMatch = text.match(/(?:(?:^|\n)\s*(?:Name|Full\s*Name))\s*[:\-]?\s*([A-Za-z\s]{3,40})/i);
+      const toMatch = text.match(/(?:(?:^|\n)\s*To\s*[:\n]\s*)([A-Za-z\s]{3,35})/i);
       if (nameMatch) {
         fullName = nameMatch[1].trim();
+      } else if (toMatch) {
+        fullName = toMatch[1].trim();
       } else {
         const lines = text.split('\n')
           .map(l => l.trim())
           .filter(l => l.length >= 3 && l.length <= 40 && /^[A-Za-z\s]+$/.test(l) &&
-            !/GOVERNMENT|INDIA|UNIQUE|IDENTIFICATION|AUTHORITY|AADHAAR|DOB|MALE|FEMALE/i.test(l));
-        if (lines.length > 0) fullName = lines[0];
+            !/(?:gov|india|inva|unique|ident|auth|aadha|ardm|dob|male|female|info|proof|repay|help|www|enrol|vid|card|father|dept|state|orma|tion|citizen|electronic|letter|valid|portal)/i.test(l));
+        if (lines.length > 0) {
+          // Plausible person name: 2-4 clean alphabetic words (min 3 chars each)
+          const candidate = lines.find(l => {
+            const words = l.split(/\s+/).filter(Boolean);
+            return words.length >= 2 && words.length <= 4 && words.every(w => w.length >= 3 && /^[A-Za-z]+$/.test(w));
+          });
+          if (candidate) {
+            fullName = candidate;
+          }
+        }
       }
     }
 
@@ -792,7 +888,8 @@ Extract and return ONLY a JSON object:
   }
 
   _extractHolderName(text) {
-    const m = text.match(/(?:consumer\s*name|name\s*of\s*consumer|applicant\s*name|name)\s*[:\-]\s*([A-Za-z\s]{3,40})/i);
+    const m = text.match(/(?:consumer\s*name|name\s*of\s*consumer|applicant\s*name|consumer|name)\s*[:\-]\s*([A-Za-z\s]{3,40})/i) ||
+              text.match(/\bCONSUMER\s+([A-Z\s]{3,35})\s+DATE\b/i);
     if (m && !/CIBIL|REPORT|SCORE|DATE|TRANSUNION/i.test(m[1].trim())) {
       return m[1].trim().toUpperCase();
     }

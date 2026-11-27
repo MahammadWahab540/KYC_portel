@@ -39,8 +39,8 @@ export function classifyDocument(rawText = '', metadata = {}) {
 
   const clean = text.toLowerCase();
 
-  // 1. Check for CIBIL / Credit Bureau Report
-  const isCibil = /(transunion|cibil|experian|equifax|crif|credit\s*report|cibil\s*score|credit\s*score|score\s*summary|control\s*number|credit\s*history|credit\s*information)/i.test(text);
+  // 1. Check for CIBIL / Credit Bureau Report & Score Screenshots
+  const isCibil = /(?:transunion|cibil|c1bil|experian|equifax|crif|credit\s*report|cibil\s*score|credit\s*score|score\s*summary|control\s*number|credit\s*history|credit\s*information|credit\s*health|credit\s*rating|credit\s*profile|credit\s*bureau|bureau\s*score|credit\s*insights|your\s*score|credit\s*check|onescore|paisabazaar|cir\b|out\s*of\s*900|payment\s*history|credit\s*summary)/i.test(text);
   if (isCibil) {
     const hasScoreOrNh = /\b([3-8][0-9]{2}|900)\b/.test(text) || /\b(nh|na|-1|no\s*credit\s*history)\b/i.test(text);
     if (hasScoreOrNh) {
@@ -57,26 +57,41 @@ export function classifyDocument(rawText = '', metadata = {}) {
     return { detectedType: 'PAN', confidence: 95 };
   }
 
-  // 3. Check for Aadhaar Front vs Back
-  const hasAadhaarNumber = /\b[2-9]{1}[0-9]{3}\s?[0-9]{4}\s?[0-9]{4}\b/.test(text) || /\b[xX]{4}[\s\-][xX]{4}[\s\-][0-9]{4}\b/.test(text);
-  const isAadhaarDoc = /(unique\s*identification\s*authority|uidai|aadhaar|mera\s*aadhaar|meri\s*pehchan|government\s*of\s*india)/i.test(text);
+  // 3. Check for Aadhaar Front vs Back vs Combined e-Aadhaar Letter
+  const aadhaarMatches = text.match(/\b[2-9]{1}[0-9]{3}\s?[0-9]{4}\s?[0-9]{4}\b/g) || text.match(/\b[xX]{4}[\s\-][xX]{4}[\s\-][0-9]{4}\b/g) || [];
+  const hasAadhaarNumber = aadhaarMatches.length > 0;
+  const isAadhaarDoc = /(unique\s*identification\s*authority|uidai|aadhaar|ardm+aar|anmann|mera\s*aadhaar|meri\s*pehchan|government\s*of\s*india|gov[a-z]*\s*of|your\s*aa[a-z]*\s*no)/i.test(text);
   const hasAddressBlock = /(address:?|s\/o|d\/o|w\/o|c\/o|pincode|road\s*no|flat\s*no|street|lane|nagar|colony)/i.test(text) && /\b[1-9][0-9]{5}\b/.test(text);
   const hasFrontMarkers = /(gender|male|female|dob|date\s*of\s*birth|year\s*of\s*birth)/i.test(text);
+  const isEaadhaarSheet = (
+    aadhaarMatches.length >= 2 ||
+    ((isAadhaarDoc || hasAadhaarNumber) && /enrolment|electronically|proof\s*of\s*identity|information|orma\s*tion|mpor\s*ma\s*tion|download|your\s*aa|vid/i.test(text)) ||
+    (hasAadhaarNumber && hasFrontMarkers && hasAddressBlock)
+  );
 
   if (isAadhaarDoc || hasAadhaarNumber || (hasAddressBlock && /\b[1-9][0-9]{5}\b/.test(text))) {
-    // If it has address block and 6-digit pin code, and does NOT have gender/front markers (or address strongly dominates)
+    // If it's an e-Aadhaar letter or dual card sheet containing front details/Aadhaar number and address/cutouts
+    if (isEaadhaarSheet || aadhaarMatches.length >= 2 || (hasAadhaarNumber && hasFrontMarkers && hasAddressBlock)) {
+      return { detectedType: 'AADHAAR_COMBINED', confidence: 95 };
+    }
+
+    // Standalone Back card: has address block and 6-digit pin code, and does NOT have gender/front markers
     if (hasAddressBlock && !hasFrontMarkers) {
       return { detectedType: 'AADHAAR_BACK', confidence: 90 };
     }
 
-    // If it has front markers or Aadhaar number without an address block
+    // Standalone Front card: has front markers or Aadhaar number without an address block
     if (hasFrontMarkers || (hasAadhaarNumber && !hasAddressBlock)) {
       return { detectedType: 'AADHAAR_FRONT', confidence: 92 };
     }
 
-    // If both address and front markers exist (e.g. e-Aadhaar full letter), check which section is present
+    // If both address and front markers exist without full letter markers
     if (hasAddressBlock) {
       return { detectedType: 'AADHAAR_BACK', confidence: 80 };
+    }
+
+    if (hasAadhaarNumber || isAadhaarDoc) {
+      return { detectedType: 'AADHAAR_FRONT', confidence: 85 };
     }
   }
 
@@ -109,17 +124,24 @@ export function validateExpectedDocument(expectedType, rawText = '', metadata = 
     normExpected === 'BANK_PROOF' || normExpected === 'BANK_PASSBOOK' ? 'BANK_STATEMENT' :
     normExpected;
 
-  // Strict Type Matching
+  // Strict Type Matching (Combined e-Aadhaar letters with front+back portions satisfy both slots)
   let isTypeMatch = false;
 
   if (mappedExpected === 'PAN' && detectedType === 'PAN') {
     isTypeMatch = true;
-  } else if (mappedExpected === 'AADHAAR_FRONT' && detectedType === 'AADHAAR_FRONT') {
+  } else if (mappedExpected === 'AADHAAR_FRONT' && (detectedType === 'AADHAAR_FRONT' || detectedType === 'AADHAAR_COMBINED')) {
     isTypeMatch = true;
-  } else if (mappedExpected === 'AADHAAR_BACK' && detectedType === 'AADHAAR_BACK') {
+  } else if (mappedExpected === 'AADHAAR_BACK' && (detectedType === 'AADHAAR_BACK' || detectedType === 'AADHAAR_COMBINED')) {
     isTypeMatch = true;
   } else if (mappedExpected === 'CIBIL' && detectedType === 'CIBIL') {
     isTypeMatch = true;
+  } else if (mappedExpected === 'CIBIL') {
+    // If a valid CIBIL/Credit report contains applicant KYC (Aadhaar/PAN) or is a score screenshot
+    const hasScore = /\b([3-8][0-9]{2}|900)\b/.test(rawText) || /\b(nh|na|-1|no\s*credit\s*history)\b/i.test(rawText);
+    const hasCreditKw = /(?:transunion|cibil|c1bil|experian|equifax|crif|credit|bureau|score|onescore|paisabazaar|cir\b)/i.test(rawText);
+    if (hasScore && hasCreditKw) {
+      isTypeMatch = true;
+    }
   } else if (mappedExpected === 'BANK_STATEMENT' && detectedType === 'BANK_STATEMENT') {
     isTypeMatch = true;
   }
@@ -164,7 +186,9 @@ export function validateExpectedDocument(expectedType, rawText = '', metadata = 
 
   if (mappedExpected === 'AADHAAR_BACK') {
     const hasPin = /\b[1-9][0-9]{5}\b/.test(rawText);
-    if (!hasPin) {
+    const hasNum = /\b[2-9]{1}[0-9]{3}\s?[0-9]{4}\s?[0-9]{4}\b/.test(rawText) || /\b[xX]{4}[\s\-][xX]{4}[\s\-][0-9]{4}\b/.test(rawText);
+    const isCombinedAadhaar = detectedType === 'AADHAAR_COMBINED' && hasNum;
+    if (!hasPin && !isCombinedAadhaar) {
       return {
         isValid: false,
         expectedType: normExpected,
