@@ -541,8 +541,13 @@ export default function App() {
         return;
       }
 
-      if (!res.ok) {
+      if (!res.ok || data.success === false) {
         setDocError(data.error || 'Document upload failed. Please retry.');
+        return;
+      }
+
+      if (data.document?.verification_status === 'REJECTED') {
+        setDocError(data.error || 'Document rejected. Please upload a valid document.');
         return;
       }
 
@@ -553,6 +558,24 @@ export default function App() {
 
       // Auto-populate extracted OCR fields when available
       const ef = data.ocr?.extractedFields || {};
+
+      // Validate required core fields before permitting stage transition
+      if (docType === 'PAN' && !ef.panNumber) {
+        setDocError('Invalid document. Please upload a valid PAN card.');
+        return;
+      }
+      if (docType === 'AADHAAR_FRONT' && !ef.aadhaarNumber && !ef.aadhaarLast4) {
+        setDocError('Invalid document. Please upload the front side of your Aadhaar card.');
+        return;
+      }
+      if (docType === 'AADHAAR_BACK' && !ef.pincode && !ef.completeAddress) {
+        setDocError('Invalid document. Please upload the back side of your Aadhaar card.');
+        return;
+      }
+      if ((docType === 'CIBIL_REPORT' || docType === 'CIBIL') && !ef.cibilScore) {
+        setDocError('Invalid document. Please upload a valid CIBIL report.');
+        return;
+      }
       
       // Normalize DOB to YYYY-MM-DD for HTML <input type="date">
       let normalizedDob: string | undefined = undefined;
@@ -1524,10 +1547,26 @@ export default function App() {
 
             {renderDocumentUploader('PAN', 'Capture or Upload PAN Front', 'panPreview', true)}
 
-            <button onClick={() => go('panPreview')} className="nxt-btn-primary">
-              <span>Proceed to Field Review</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            {(() => {
+              const hasPan = uploadedDocs.some(d => d.document_type === 'PAN' && d.verification_status !== 'REJECTED') && Boolean(appState.pan);
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!hasPan) {
+                      setDocError('Invalid document. Please upload a valid PAN card.');
+                      return;
+                    }
+                    go('panPreview');
+                  }}
+                  disabled={!hasPan}
+                  className={`nxt-btn-primary ${!hasPan ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <span>Proceed to Field Review</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              );
+            })()}
           </div>
         );
 
@@ -1619,10 +1658,33 @@ export default function App() {
               </div>
             </div>
 
-            <button onClick={() => go('aadhaarPreview')} className="nxt-btn-primary">
-              <span>Review Extracted Aadhaar Details</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            {(() => {
+              const hasFront = uploadedDocs.some(d => (d.document_type === 'AADHAAR_FRONT' || d.document_type === 'AADHAAR') && d.verification_status !== 'REJECTED');
+              const hasBack = uploadedDocs.some(d => d.document_type === 'AADHAAR_BACK' && d.verification_status !== 'REJECTED');
+              const canProceed = hasFront && hasBack;
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!hasFront) {
+                      setDocError('Invalid document. Please upload the front side of your Aadhaar card.');
+                      return;
+                    }
+                    if (!hasBack) {
+                      setDocError('Invalid document. Please upload the back side of your Aadhaar card.');
+                      return;
+                    }
+                    go('aadhaarPreview');
+                  }}
+                  disabled={!canProceed}
+                  className={`nxt-btn-primary ${!canProceed ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <span>Review Extracted Aadhaar Details</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              );
+            })()}
           </div>
         );
 
@@ -1793,10 +1855,26 @@ export default function App() {
 
             {renderDocumentUploader('BANK_STATEMENT', appState.bankType === 'statement' ? 'Upload Bank Statement PDF' : 'Upload Passbook Photo', 'bankPreview', true)}
 
-            <button onClick={() => go('bankPreview')} className="nxt-btn-primary">
-              <span>Review Extracted Bank Info</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            {(() => {
+              const hasBank = uploadedDocs.some(d => (d.document_type === 'BANK_STATEMENT' || d.document_type === 'BANK_PROOF' || d.document_type === 'BANK_PASSBOOK') && d.verification_status !== 'REJECTED') && Boolean(appState.accountNumber || appState.ifsc);
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!hasBank) {
+                      setDocError('Invalid document. Please upload a valid Bank Statement or Passbook.');
+                      return;
+                    }
+                    go('bankPreview');
+                  }}
+                  disabled={!hasBank}
+                  className={`nxt-btn-primary ${!hasBank ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <span>Review Extracted Bank Info</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              );
+            })()}
           </div>
         );
 

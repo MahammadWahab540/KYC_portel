@@ -224,11 +224,11 @@ export class AuthService {
    */
   async verifyOtp(phone, otpInput) {
     const whitelistedOtp = WHITELIST_OTPS.get(phone);
-    if ((whitelistedOtp && String(otpInput) === whitelistedOtp) || (process.env.QA_OTP_BYPASS_ENABLED === 'true')) {
+    if (whitelistedOtp && String(otpInput) === whitelistedOtp) {
       otpStore.delete(phone);
       const userType = await this._detectUserType(phone);
       const token = this._generateToken(phone, userType);
-      this._auditLog(phone, 'OTP_VERIFIED_QA_BYPASS', { userType }).catch(() => {});
+      this._auditLog(phone, 'OTP_VERIFIED_WHITELIST', { userType }).catch(() => {});
       return {
         success: true,
         token,
