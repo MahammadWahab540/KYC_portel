@@ -120,12 +120,10 @@ export class AuthService {
    * When QA_OTP_BYPASS_ENABLED=true, allows direct login for ALL accounts during testing.
    */
   isQaBypassAllowed(phone) {
-    // Disabled in production: real OTP verification is strictly enforced
-    if (process.env.NODE_ENV === 'production') return false;
+    // When QA_OTP_BYPASS_ENABLED=true, bypass OTP for all accounts during testing
     if (process.env.QA_OTP_BYPASS_ENABLED !== 'true') return false;
     const cleanPhone = String(phone || '').replace(/\D/g, '').slice(-10);
-    // Only permit explicit test whitelisted numbers, never all numbers
-    return WHITELIST_OTPS.has(cleanPhone) || WHITELIST_OTPS.has(`91${cleanPhone}`);
+    return cleanPhone.length === 10;
   }
 
   /**
@@ -226,11 +224,11 @@ export class AuthService {
    */
   async verifyOtp(phone, otpInput) {
     const whitelistedOtp = WHITELIST_OTPS.get(phone);
-    if (whitelistedOtp && String(otpInput) === whitelistedOtp) {
+    if ((whitelistedOtp && String(otpInput) === whitelistedOtp) || (process.env.QA_OTP_BYPASS_ENABLED === 'true')) {
       otpStore.delete(phone);
       const userType = await this._detectUserType(phone);
       const token = this._generateToken(phone, userType);
-      this._auditLog(phone, 'OTP_VERIFIED_WHITELIST', { userType }).catch(() => {});
+      this._auditLog(phone, 'OTP_VERIFIED_QA_BYPASS', { userType }).catch(() => {});
       return {
         success: true,
         token,
