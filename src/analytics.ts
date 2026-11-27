@@ -65,25 +65,47 @@ export const identifyUser = (userId: string, traits: Record<string, any> = {}) =
   });
 };
 
+// PII Sanitizer for Mixpanel tracking
+function sanitizePii(data: Record<string, any> = {}): Record<string, any> {
+  const sanitized: Record<string, any> = {};
+  const forbiddenKeys = new Set([
+    'pan', 'pannumber', 'aadhaar', 'aadhaarnumber', 'aadhaarlast4',
+    'bankaccount', 'accountnumber', 'reaccountnumber', 'ifsc',
+    'cibilscore', 'score', 'otp', 'cootp', 'dob', 'dateofbirth',
+    'password', 'pincode', 'completeaddress', 'street', 'building'
+  ]);
+
+  for (const [key, value] of Object.entries(data)) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (forbiddenKeys.has(normalizedKey)) {
+      sanitized[key] = '[REDACTED_PII]';
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 /**
  * Track discrete KYC funnel events across Mixpanel and PostHog
  */
 export const trackEvent = (eventName: string, properties: Record<string, any> = {}) => {
   if (!isInitialized) initMixpanel();
+  const safeProperties = sanitizePii(properties);
   try {
     mixpanel.track(eventName, {
       timestamp: new Date().toISOString(),
-      ...properties
+      ...safeProperties
     });
     if (metaEnv.DEV) {
-      console.log(`[Mixpanel Event] ${eventName}`, properties);
+      console.log(`[Mixpanel Event] ${eventName}`, safeProperties);
     }
   } catch (err) {
     console.warn(`[Mixpanel] Track failed for ${eventName}:`, err);
   }
 
   // PostHog Event Capture
-  capturePostHogEvent(eventName, properties);
+  capturePostHogEvent(eventName, safeProperties);
 };
 
 /**

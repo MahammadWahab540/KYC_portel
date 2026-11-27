@@ -600,7 +600,17 @@ export default function App() {
         has_extracted_fields: Object.keys(ef).length > 0
       });
 
-      await go(nextStage);
+      let resolvedNext = nextStage;
+      if (docType === 'CIBIL_REPORT') {
+        const scoreVal = parseInt(ef.cibilScore, 10);
+        if (ef.cibilScore === 'NH' || (scoreVal && scoreVal < 650)) {
+          resolvedNext = 'cibilLow';
+        } else {
+          resolvedNext = 'cibilResult';
+        }
+      }
+
+      await go(resolvedNext);
     } catch {
       setDocError('Network error during document upload. Please retry.');
     } finally {
@@ -1352,12 +1362,12 @@ export default function App() {
 
             <div className="bg-white p-6 rounded-3xl border border-[#e0e7f2] text-center shadow-sm space-y-3">
               <div className="inline-block px-3 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full">
-                Excellent Credit Profile
+                {parseInt(appState.demoScore, 10) >= 750 ? 'Excellent Credit Profile' : 'Eligible Credit Profile'}
               </div>
-              <div className="text-5xl font-black text-[#0c1b3b] tracking-tight">{appState.demoScore}</div>
-              <div className="text-xs text-[#687894]">Score verified across TransUnion CIBIL registry</div>
+              <div className="text-5xl font-black text-[#0c1b3b] tracking-tight">{appState.demoScore || '—'}</div>
+              <div className="text-xs text-[#687894]">Score verified across Credit Bureau report</div>
               <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
-                <div className="bg-gradient-to-r from-yellow-400 via-green-500 to-[#7136ef] h-full" style={{ width: '87%' }} />
+                <div className="bg-gradient-to-r from-yellow-400 via-green-500 to-[#7136ef] h-full" style={{ width: `${Math.min(100, Math.max(10, ((parseInt(appState.demoScore, 10) || 650) - 300) / 6))}%` }} />
               </div>
             </div>
 

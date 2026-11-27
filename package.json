@@ -14,10 +14,12 @@
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.344.0",
     "mixpanel-browser": "^2.86.0",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.23.1",
     "posthog-js": "^1.455.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/mixpanel-browser": "^2.60.0",

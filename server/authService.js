@@ -120,9 +120,12 @@ export class AuthService {
    * When QA_OTP_BYPASS_ENABLED=true, allows direct login for ALL accounts during testing.
    */
   isQaBypassAllowed(phone) {
+    // Disabled in production: real OTP verification is strictly enforced
+    if (process.env.NODE_ENV === 'production') return false;
     if (process.env.QA_OTP_BYPASS_ENABLED !== 'true') return false;
     const cleanPhone = String(phone || '').replace(/\D/g, '').slice(-10);
-    return cleanPhone.length === 10;
+    // Only permit explicit test whitelisted numbers, never all numbers
+    return WHITELIST_OTPS.has(cleanPhone) || WHITELIST_OTPS.has(`91${cleanPhone}`);
   }
 
   /**

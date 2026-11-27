@@ -32,13 +32,17 @@ function requireAuth(req, res, parsedUrl) {
   return decoded;
 }
 
-function sendJson(res, statusCode, data) {
-  res.writeHead(statusCode, {
+function sendJson(res, statusCode, data, correlationId = '') {
+  const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-  });
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Correlation-Id'
+  };
+  if (correlationId) {
+    headers['X-Correlation-Id'] = correlationId;
+  }
+  res.writeHead(statusCode, headers);
   res.end(JSON.stringify(data));
 }
 
@@ -69,6 +73,7 @@ const server = http.createServer(async (req, res) => {
 
   const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
   const pathname = parsedUrl.pathname;
+  const correlationId = req.headers['x-correlation-id'] || `req_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
   try {
     // 1. Health check
@@ -135,7 +140,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Dispatch via Gallabox WhatsApp Business API (OTP is never logged or returned)
-      const delivery = await gallabox.sendAuthOtp(normalizedPhone, otpResult.otp);
+      const delivery = await gallabox.sendAuthOtp(normalizedPhone, otpResult.otp, correlationId);
       if (!delivery.success) {
         authService.invalidateOtp(normalizedPhone);
         return sendJson(res, 502, {
