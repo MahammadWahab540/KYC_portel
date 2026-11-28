@@ -1,6 +1,6 @@
 export async function onRequest(context) {
   const url = new URL(context.request.url);
-  const backendBase = 'https://hearts-vendor-handmade-donald.trycloudflare.com';
+  const backendBase = 'https://subsection-crown-eastern-significant.trycloudflare.com';
   const targetUrl = new URL(url.pathname + url.search, backendBase);
 
   // Handle CORS preflight directly
